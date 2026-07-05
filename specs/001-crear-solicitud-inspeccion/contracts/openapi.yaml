@@ -1,0 +1,376 @@
+openapi: 3.0.3
+
+info:
+  title: Liberaciones de Obra API
+  description: |
+    API REST para la gestión del flujo de liberaciones de obra.
+    Permite registrar solicitudes de inspección vinculadas a proyectos,
+    frentes y actividades de construcción.
+  version: 1.0.0
+  contact:
+    name: Equipo liberacionesobra-service
+
+servers:
+  - url: http://localhost:8080
+    description: Servidor de desarrollo local
+
+tags:
+  - name: solicitudes
+    description: Gestión de solicitudes de inspección
+  - name: catalogo
+    description: Consulta de catálogos (proyectos, frentes, actividades)
+
+paths:
+
+  /solicitudes-inspeccion:
+    post:
+      tags: [solicitudes]
+      operationId: crearSolicitudInspeccion
+      summary: Crear una nueva solicitud de inspección
+      description: |
+        Registra una solicitud de inspección vinculada a proyecto, frente y actividad.
+        Si ya existe una solicitud activa (estado PENDIENTE) para la misma combinación,
+        el sistema responde con 409 Conflict. Para confirmar la creación a pesar del
+        duplicado, se debe incluir `forzar: true` en el cuerpo de la petición.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearSolicitudRequest'
+      responses:
+        '201':
+          description: Solicitud creada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudInspeccionResponse'
+        '400':
+          description: Datos de entrada inválidos (campo obligatorio faltante)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorValidacionResponse'
+        '404':
+          description: Proyecto, frente o actividad no encontrado en el catálogo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Ya existe una solicitud activa para esta combinación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudDuplicadaResponse'
+
+    get:
+      tags: [solicitudes]
+      operationId: listarSolicitudesInspeccion
+      summary: Listar solicitudes de inspección con filtros
+      description: |
+        Retorna el listado de solicitudes de inspección. Soporta filtrado por frente,
+        proyecto y estado. Utilizado por el residente para consultar el estado de su frente.
+        El cliente debe llamar a este endpoint periódicamente (polling) para obtener
+        actualizaciones sin recargar manualmente la pantalla.
+      parameters:
+        - name: frenteId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Filtrar por identificador de frente
+        - name: proyectoId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Filtrar por identificador de proyecto
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EstadoSolicitud'
+          description: Filtrar por estado de la solicitud
+      responses:
+        '200':
+          description: Listado de solicitudes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaSolicitudesResponse'
+
+  /solicitudes-inspeccion/{id}:
+    get:
+      tags: [solicitudes]
+      operationId: obtenerSolicitudInspeccion
+      summary: Obtener una solicitud de inspección por ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Solicitud encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudInspeccionResponse'
+        '404':
+          description: Solicitud no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /proyectos:
+    get:
+      tags: [catalogo]
+      operationId: listarProyectos
+      summary: Listar todos los proyectos disponibles
+      responses:
+        '200':
+          description: Listado de proyectos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaProyectosResponse'
+
+  /proyectos/{proyectoId}/frentes:
+    get:
+      tags: [catalogo]
+      operationId: listarFrentesPorProyecto
+      summary: Listar frentes de un proyecto
+      parameters:
+        - name: proyectoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Listado de frentes del proyecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaFrentesResponse'
+        '404':
+          description: Proyecto no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /frentes/{frenteId}/actividades:
+    get:
+      tags: [catalogo]
+      operationId: listarActividadesPorFrente
+      summary: Listar actividades de un frente
+      parameters:
+        - name: frenteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Listado de actividades del frente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaActividadesResponse'
+        '404':
+          description: Frente no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+
+    CrearSolicitudRequest:
+      type: object
+      required:
+        - proyectoId
+        - frenteId
+        - actividadId
+        - inspectorId
+      properties:
+        proyectoId:
+          type: string
+          format: uuid
+          description: Identificador del proyecto al que pertenece la actividad
+        frenteId:
+          type: string
+          format: uuid
+          description: Identificador del frente al que pertenece la actividad
+        actividadId:
+          type: string
+          format: uuid
+          description: Identificador de la actividad lista para inspección
+        inspectorId:
+          type: string
+          format: uuid
+          description: Identificador del inspector que crea la solicitud
+        forzar:
+          type: boolean
+          default: false
+          description: |
+            Cuando es true, permite crear la solicitud aunque ya exista una activa
+            para la misma combinación. Requiere confirmación explícita del usuario.
+
+    SolicitudInspeccionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        proyectoId:
+          type: string
+          format: uuid
+        frenteId:
+          type: string
+          format: uuid
+        actividadId:
+          type: string
+          format: uuid
+        inspectorId:
+          type: string
+          format: uuid
+        estado:
+          $ref: '#/components/schemas/EstadoSolicitud'
+        fechaCreacion:
+          type: string
+          format: date-time
+
+    ListaSolicitudesResponse:
+      type: object
+      properties:
+        solicitudes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolicitudInspeccionResponse'
+        total:
+          type: integer
+
+    SolicitudDuplicadaResponse:
+      type: object
+      properties:
+        mensaje:
+          type: string
+          example: "Ya existe una solicitud activa para este punto de inspección"
+        solicitudExistenteId:
+          type: string
+          format: uuid
+          description: ID de la solicitud activa existente
+        codigoError:
+          type: string
+          example: "SOLICITUD_DUPLICADA"
+
+    ErrorValidacionResponse:
+      type: object
+      properties:
+        mensaje:
+          type: string
+          example: "Error de validación en los datos de entrada"
+        errores:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorCampo'
+
+    ErrorCampo:
+      type: object
+      properties:
+        campo:
+          type: string
+          example: "frenteId"
+        mensaje:
+          type: string
+          example: "El campo frenteId es obligatorio"
+
+    ErrorResponse:
+      type: object
+      properties:
+        mensaje:
+          type: string
+        codigoError:
+          type: string
+
+    EstadoSolicitud:
+      type: string
+      enum:
+        - PENDIENTE
+        - APROBADA
+        - RECHAZADA
+
+    ProyectoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        descripcion:
+          type: string
+
+    FrenteResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        proyectoId:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        residenteId:
+          type: string
+          format: uuid
+
+    ActividadResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        frenteId:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        descripcion:
+          type: string
+
+    ListaProyectosResponse:
+      type: object
+      properties:
+        proyectos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProyectoResponse'
+
+    ListaFrentesResponse:
+      type: object
+      properties:
+        frentes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FrenteResponse'
+
+    ListaActividadesResponse:
+      type: object
+      properties:
+        actividades:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActividadResponse'

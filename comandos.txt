@@ -1,0 +1,10 @@
+//Crear el constitution.md (Pedir que sea en español, por defecto genera en ingles)
+#/speckit-constitution Genera un constitution con las siguientes reglas: 1. La arquitectura a utilizar es la arquitectura limpia planteada por Robert Martin, 2. Generar pruebas unitarias, integración y
+funcionales utilizando el concepto BDD, 3. Utilizar buenas practicas de programacion que son: SOLID, Yagni, Dry. , 4. Utilizar el concepto de API First para generar las apis, siempre debe estar un contrato openapi
+y utilizar openapi-generator para la generación de las mismas., 5. Validar las siguientes metricas: coverage por clase > 80% y coverage global >= 80% y utilizar jacobo para generar los reportes de pruebas. , 6. Todo esto en idioma espñaol.
+
+#/speckit-specify [pegar una historia de usuario]
+
+#/speckit-plan
+
+#/speckit-tasks

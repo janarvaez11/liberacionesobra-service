@@ -1,0 +1,63 @@
+{
+  "proyecto": "liberacionesobra-service",
+  "version": "0.0.1-SNAPSHOT",
+  "fecha": "2026-07-05",
+  "commit": "unknown",
+  "tests": {
+    "comando": "./gradlew clean test jacocoTestReport jacocoTestCoverageVerification",
+    "passed": 62,
+    "total": 62,
+    "coverage": 98.23,
+    "coverage_fuente": "build/reports/jacoco/test/jacocoTestReport.xml (counter LINE a nivel <report>: missed=7 covered=389 => 389/396=98.23%). jacocoTestCoverageVerification (regla de umbral propia de Gradle sobre INSTRUCTION>=80% y BRANCH>=80% agregados) PASO: BUILD SUCCESSFUL."
+  },
+  "security": {
+    "fuente": "DESVIACION DOCUMENTADA: el Semgrep MCP no esta expuesto como tool function en esta sesion del subagente (solo Read/Write/Glob/Grep/Bash). Se uso el Semgrep CLI equivalente (semgrep.exe 1.168.0) con --config p/java --config p/owasp-top-ten --config p/secrets sobre src/main/java. Primer intento fallo (HTTP 401 al descargar reglas del registro) porque la variable de entorno SEMGREP_APP_TOKEN preexistente en el shell era invalida/no aplicable para descarga anonima del registro; se relanzo el escaneo sin esa variable (unset SEMGREP_APP_TOKEN) y se completo correctamente (0 errores, 42 archivos escaneados, 100 reglas ejecutadas: java 60 + multilenguaje 40). Complementado con grep manual de secretos (password/secret/api_key/token) en src/main y application.yaml.",
+    "critical": 0,
+    "high": 0,
+    "secrets": 0,
+    "hallazgos": [],
+    "notas_informativas": [
+      "No se encontro spring-boot-starter-security ni ningun SecurityFilterChain/@PreAuthorize en build.gradle ni src/main: no hay autenticacion/autorizacion a nivel de codigo en ningun endpoint. Esto NO se cuenta como hallazgo bloqueante porque el spec.md (seccion 'Supuestos') declara explicitamente que la autenticacion de inspector y residente 'queda fuera del alcance de esta historia'. Se reporta para que el equipo lo tenga en cuenta en el backlog de seguridad.",
+      "application.yaml usa H2 en memoria con 'password:' vacio (linea 8) -- aceptable, es una base de datos de pruebas/desarrollo embebida, no un secreto real."
+    ]
+  },
+  "spec": "specs/001-crear-solicitud-inspeccion/spec.md",
+  "criteria": [
+    {
+      "id": "RF-001",
+      "fuente": "spec.md - RF-001 (crear solicitud con proyecto/frente/actividad de catalogo)",
+      "status": "cumple",
+      "evidencia": "CrearSolicitudInspeccionFuncionalTest#dadoDatosValidos_cuandoPost_entonces201ConEstadoPendiente (PASA, 201 + id no vacio) y #dadoProyectoInexistente_cuandoPost_entonces404 (PASA, valida existencia en catalogo). Codigo: CrearSolicitudInspeccionUseCase.ejecutar() lineas 65-70 valida proyecto/frente/actividad contra los repositorios de catalogo antes de crear."
+    },
+    {
+      "id": "RF-002",
+      "fuente": "spec.md - RF-002 (estado inicial pendiente + fecha/hora de creacion automaticos)",
+      "status": "cumple",
+      "evidencia": "CrearSolicitudInspeccionFuncionalTest#dadoDatosValidos_cuandoPost_entonces201ConEstadoPendiente asserts jsonPath $.estado=PENDIENTE y $.fechaCreacion no vacio (PASA). CrearSolicitudInspeccionUseCaseTest#dadoDatosValidos_cuandoSeCreaSolicitud_entoncesEstadoPendienteYFechaAsignada (PASA) verifica lo mismo a nivel de caso de uso. Codigo: SolicitudDomainService.crearSolicitud() fija estado=PENDIENTE y fechaCreacion=LocalDateTime.now()."
+    },
+    {
+      "id": "RF-003",
+      "fuente": "spec.md - RF-003 (validar campos obligatorios con mensaje especifico por campo)",
+      "status": "cumple",
+      "evidencia": "ValidacionCamposObligatoriosFuncionalTest: #dadoCuerpoVacio_cuandoPost_entonces400ConErrores, #dadoFrenteIdFaltante_cuandoPost_entonces400ConErrorFrenteId, #dadoActividadIdFaltante_cuandoPost_entonces400ConErrorActividadId (las 3 PASAN, verifican 400 + arreglo $.errores con campo especifico via jsonPath)."
+    },
+    {
+      "id": "RF-004",
+      "fuente": "spec.md - RF-004 (detectar duplicado activo pendiente y exigir confirmacion explicita)",
+      "status": "cumple",
+      "evidencia": "DuplicadoSolicitudFuncionalTest#dadoDuplicadoSinForzar_cuandoPost_entonces409 (PASA, 409 SOLICITUD_DUPLICADA + solicitudExistenteId) y #dadoDuplicadoConForzar_cuandoPost_entonces201 (PASA). DeteccionDuplicadosUseCaseTest (2 tests, PASAN) cubre el mismo comportamiento a nivel de caso de uso con mocks."
+    },
+    {
+      "id": "RF-005",
+      "fuente": "spec.md - RF-005 (residente ve solicitudes de su frente actualizadas automaticamente, sin recargar)",
+      "status": "cumple",
+      "evidencia": "VERIFICADO EN CODIGO REAL (re-verificacion desde cero, no se reutilizo evidencia previa): (a) SseSolicitudNotificador.java implementa un mecanismo push real via SseEmitter/SSE: mantiene Map<UUID,List<SseEmitter>> suscriptoresPorFrente (linea 29), metodo suscribir() registra un emitter por frente (lineas 37-54) y notificar() hace push del evento 'nueva-solicitud' con los datos de la solicitud a cada emitter suscrito de ese frente (lineas 56-74). (b) CrearSolicitudInspeccionUseCase.ejecutar() invoca notificador.notificar(persistida) en la linea 93, tras persistir la solicitud -- el flujo de creacion SI dispara la notificacion. (c) Tests reales y no tautologicos, ambos PASAN: SseSolicitudNotificadorTest#dadoSuscriptor_cuandoNotificarMismoFrente_entoncesRecibePush (linea 54, PASA en 0.014s) verifica con un spy de SseEmitter que el suscriptor de un frente recibe el evento con los datos exactos de la solicitud (ademas hay pruebas de aislamiento por frente y de limpieza de suscriptores al completar/timeout, tambien PASAN). SolicitudEventosFuncionalTest#dadoResidenteSuscrito_cuandoInspectorCreaSolicitud_entoncesRecibeActualizacionAutomatica (linea 51, PASA en 0.027s) es un test funcional de extremo a extremo real: abre la conexion SSE via GET /frentes/{frenteId}/solicitudes-inspeccion/eventos, luego hace POST /solicitudes-inspeccion como si fuera el inspector, y verifica que el contenido ya escrito en el stream SSE contiene 'nueva-solicitud' y el frenteId correcto -- sin que el test haga polling manual ni recargue nada. Adicionalmente CrearSolicitudInspeccionUseCaseTest#dadoDatosValidos_cuandoSeCreaSolicitud_entoncesEstadoPendienteYFechaAsignada verifica con Mockito verify(notificador).notificar(resultado) que el caso de uso llama al notificador. Los 6 tests relacionados con RF-005 (4 en SseSolicitudNotificadorTest + 2 en SolicitudEventosFuncionalTest) PASAN segun build/test-results/test/TEST-org.ups.liberacionesobra.infrastructure.notification.SseSolicitudNotificadorTest.xml y TEST-org.ups.liberacionesobra.presentation.controller.SolicitudEventosFuncionalTest.xml (0 failures, 0 errors)."
+    },
+    {
+      "id": "RF-006",
+      "fuente": "spec.md - RF-006 (cada solicitud vinculada de forma univoca a un proyecto, un frente y una actividad)",
+      "status": "cumple",
+      "evidencia": "Diseno estructural: SolicitudInspeccion (dominio) tiene campos escalares unicos proyectoId/frenteId/actividadId (no colecciones). SolicitudInspeccionJpaEntity.java declara @Column(nullable=false) en proyecto_id (linea 25), frente_id (linea 28) y actividad_id (linea 31), garantizando a nivel de esquema que no puede persistirse una solicitud sin exactamente un proyecto/frente/actividad. CrearSolicitudInspeccionUseCase.ejecutar() lineas 65-70 valida la existencia de cada uno de los tres contra su repositorio de catalogo antes de vincular. SolicitudInspeccionJpaRepositoryTest#dadoEntidadSolicitud_cuandoGuardaYRecuperaPorId_entoncesFieldsPersisten (PASA) confirma que proyectoId/frenteId/actividadId se persisten y recuperan correctamente y de forma unica por solicitud."
+    }
+  ]
+}
